@@ -1,15 +1,17 @@
 #! /usr/bin/python3
-import traceback, logging
-
+import traceback, logging, requests, datetime, os, PyPDF2, base64, hashlib, json, io
+from base64 import b64encode
 from flask import Flask, request, Response, redirect
 import config
-import requests, datetime, os, PyPDF2, base64, hashlib, json, io
-from base64 import b64encode
 
 
 app = Flask(__name__)
 if 'logs' not in os.listdir(os.getcwd()):
     os.mkdir('logs')
+
+
+application_path = os.path.dirname(os.path.abspath(__file__))
+sfConfig = json.load(open(os.path.join(application_path, 'sf_config.json')))
 
 
 @app.route(config.authSlug)
@@ -74,6 +76,7 @@ def authorization():
     else:
         logging.info('The app authorization url is called but the app is already authorized')
         return 'The app is already authorized'
+
 
 @app.route(config.invoicesSlug)
 def process_invoices():
@@ -254,6 +257,61 @@ def process_invoices():
         return Response(status=500)
 
     return Response(status=200)
+
+
+@app.route(sfConfig['sf_auth_slug'])
+def salesforce_authorization():
+    # Salesforce OAuth 2.0 API reference:
+    # https://help.salesforce.com/s/articleView?id=sf.remoteaccess_oauth_web_server_flow.htm&type=5
+
+    # Update the log parameters with the new filename
+    reportName = os.path.join('logs', 'log ' + datetime.datetime.now().strftime('%Y-%m') + '.txt')
+    logging.basicConfig(filename=reportName, level=logging.INFO, format=' %(asctime)s -  %(levelname)s -  %(message)s')
+
+    # Read the config file
+    sfConfig = json.load(open(os.path.join(application_path, 'sf_config.json')))
+
+    token = sfConfig.get('access_token')
+
+    if token:
+        logging.info('The app authorization url is called but the app is already authorized')
+        return 'The app is already authorized'
+    else:
+        # Check if user returned from the authorization page with the code
+        authCode = request.args.get('code')
+        if authCode:
+            # Send the code to get the access token
+            data = {
+                'grant_type': 'authorization_code',
+                'code': authCode,
+                'client_id': sfConfig["sf_consumer_key"],
+                'client_secret': sfConfig["sf_consumer_secret"],
+                'redirect_uri': sfConfig["app_address"] + sfConfig["sf_auth_slug"]
+            }
+            response = requests.post('https://godschild.lightning.force.com/services/oauth2/token', data=data)
+
+            try:
+                sfConfig['access_token'] = response.json()['access_token']
+            except:
+                logging.error(str(response.json()))
+                raise Exception('error getting the token from the response')
+
+            # Save the access token
+            json.dump(sfConfig, open(os.path.join(application_path, 'sf_config.json'), 'w'))
+
+            logging.info('The app got authorized')
+
+            return f'The app is authorized.'
+
+        else:
+            # send the authorization request to get the code
+            redirectUrl = f'https://login.salesforce.com/services/oauth2/authorize?' \
+                          f'response_type=code&' \
+                          f'client_id={sfConfig["sf_consumer_key"]}&' \
+                          f'redirect_uri={sfConfig["app_address"]}{sfConfig["sf_auth_slug"]}&' \
+                          f'scope=full'
+            logging.info('The app authorization url is called, no token found. Redirecting to ' + redirectUrl)
+            return redirect(redirectUrl)
 
 
 @app.route('/')
