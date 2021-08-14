@@ -261,8 +261,13 @@ def process_invoices():
 
 @app.route(sfConfig['sf_auth_slug'])
 def salesforce_authorization():
+    # Create a Connected App on Salesforce to get the client ID and secret:
+    # https://help.salesforce.com/s/articleView?id=sf.connected_app_create.htm&type=5
+
     # Salesforce OAuth 2.0 API reference:
     # https://help.salesforce.com/s/articleView?id=sf.remoteaccess_oauth_web_server_flow.htm&type=5
+    # another API reference:
+    # https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/quickstart.htm
 
     # Update the log parameters with the new filename
     reportName = os.path.join('logs', 'log ' + datetime.datetime.now().strftime('%Y-%m') + '.txt')
